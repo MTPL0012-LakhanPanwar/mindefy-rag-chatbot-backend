@@ -4,12 +4,11 @@ from typing import List, Optional
 
 
 class Settings(BaseSettings):
-    app_name: str = "Breathe AI API"
+    app_name: str = "RAG Chatbot API"
     environment: str = Field(default="development")
 
-    # Mongo
-    mongo_uri: AnyUrl | str = Field(default="mongodb://localhost:27017")
-    mongo_db: str = Field(default="breathe_ai")
+    # Mongo (database name is extracted from the URI path)
+    mongo_uri: AnyUrl | str = Field(default="")
     
     GROQ_API_KEY: str
 
@@ -38,9 +37,27 @@ class Settings(BaseSettings):
     use_credentials: bool = True
     validate_certs: bool = True
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    # File Upload Settings
+    MAX_FILE_SIZE_MB: int = 2
+    ALLOWED_EXTENSIONS: List[str] = [".pdf"]
+    
+    # RAG Settings
+    CHUNK_SIZE: int = 500
+    CHUNK_OVERLAP: int = 100
+    TOP_K_RESULTS: int = 3
+    MAX_HISTORY_PAIRS: int = 5
+    
+    # OpenAI Settings
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    CHAT_MODEL: str = "gpt-4o-mini"
+    TEMPERATURE: float = 0.3
+    MAX_TOKENS: int = 500
+
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": False,
+        "extra": "ignore",
+    }
 
 
 settings = Settings()

@@ -17,14 +17,16 @@ async def connect_to_mongo() -> None:
     global mongo_client, db
     if mongo_client is None:
         mongo_client = AsyncIOMotorClient(
-            str(settings.mongo_uri)
+            str(settings.mongo_uri),
+            tlsCAFile=certifi.where()  # Required for MongoDB Atlas SSL connections
         )
-        db = mongo_client[settings.mongo_db]
+        # Get database from the URI path (e.g., /rag-chatbot in the connection string)
+        db = mongo_client.get_default_database()
         
         # Create indexes for chat_histories collection
         await create_chat_indexes()
         
-        print(f"Connected to MongoDB: {settings.mongo_db}")
+        print(f"Connected to MongoDB: {db.name}")
 
 
 async def close_mongo_connection() -> None:

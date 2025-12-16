@@ -1,14 +1,61 @@
+import os
+import gc
+import traceback
+from pathlib import Path
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+from fastapi.responses import FileResponse
 
 from dependencies.auth import require_admin
 from schemas.user import UserOut, AdminUpdateRequestStatus
 from services import users as user_service
 from services.email import email_service
 
+# ===== RAG Imports =====
+from rag_services.pdf_processor import PDFProcessor
+from rag_services.embeddings import EmbeddingService
+from core.config import settings
+from models.rag_model import UploadResponse
+from rag_services.retrieval import HybridRetriever
+from rag_services.state import global_state
 
 router = APIRouter()
 
+# =========================
+# RAG Services
+# =========================
+pdf_processor = PDFProcessor()
+embedding_service = EmbeddingService(settings.EMBEDDING_MODEL)
+
+UPLOAD_DIR = Path("uploaded_pdfs")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+
+def clear_global_state():
+    """Clear all RAG-related memory and delete PDF."""
+    if global_state['retriever'] is not None:
+        if hasattr(global_state['retriever'], 'dense_index'):
+            global_state['retriever'].dense_index.reset()
+
+    if global_state['pdf_path'] and os.path.exists(global_state['pdf_path']):
+        try:
+            os.remove(global_state['pdf_path'])
+        except Exception as e:
+            print(f"Error deleting PDF: {e}")
+
+    global_state['retriever'] = None
+    global_state['chunks'] = None
+    global_state['history'] = []
+    global_state['pdf_path'] = None
+    global_state['pdf_filename'] = None
+    global_state['pdf_size'] = None
+    gc.collect()
+
+
+# =====================================================================
+# ======================== EXISTING CODE (UNCHANGED) ===================
+# =====================================================================
 
 @router.get("/users", response_model=List[UserOut])
 async def list_users(_: dict = Depends(require_admin)):
@@ -106,3 +153,87 @@ async def update_approval(user_id: str, payload: AdminUpdateRequestStatus, _: di
     }
 
 
+# =====================================================================
+# ======================== NEW RAG APIs (INTEGRATED) ===================
+# =====================================================================
+
+@router.post("/upload", response_model=UploadResponse, dependencies=[Depends(require_admin)])
+async def upload_pdf(file: UploadFile = File(...)):
+    if not file.filename.endswith(tuple(settings.ALLOWED_EXTENSIONS)):
+        raise HTTPException(status_code=400, detail="Invalid file type")
+
+    pdf_bytes = await file.read()
+    pdf_size = len(pdf_bytes)
+
+    if pdf_size > settings.MAX_FILE_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size limit exceeded")
+
+    try:
+        pdf_path = UPLOAD_DIR / file.filename
+        if pdf_path.exists():
+            from datetime import datetime
+            name, ext = os.path.splitext(file.filename)
+            pdf_path = UPLOAD_DIR / f"{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_bytes)
+
+        text = pdf_processor.extract_text(pdf_bytes)
+        if not text or len(text.strip()) < 100:
+            os.remove(pdf_path)
+            raise HTTPException(status_code=400, detail="Insufficient text content")
+
+        chunks = pdf_processor.create_chunks(
+            text,
+            settings.CHUNK_SIZE,
+            settings.CHUNK_OVERLAP
+        )
+
+        previous_chunks = len(global_state['chunks']) if global_state['chunks'] else 0
+        if global_state['retriever']:
+            clear_global_state()
+
+        retriever = HybridRetriever(chunks, embedding_service)
+
+        global_state.update({
+            'retriever': retriever,
+            'chunks': chunks,
+            'history': [],
+            'pdf_path': str(pdf_path),
+            'pdf_filename': pdf_path.name,
+            'pdf_size': pdf_size
+        })
+
+        return UploadResponse(
+            message="PDF processed successfully",
+            chunks_count=len(chunks),
+            is_update=previous_chunks > 0,
+            previous_chunks=previous_chunks or None,
+            filename=pdf_path.name,
+            file_size=pdf_size
+        )
+
+    except Exception as e:
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/clear", dependencies=[Depends(require_admin)])
+async def clear_document():
+    if global_state['retriever'] is None:
+        raise HTTPException(status_code=404, detail="No document to clear")
+
+    clear_global_state()
+    return {"message": "Document and vectors cleared successfully"}
+
+
+@router.get("/pdf", dependencies=[Depends(require_admin)])
+async def get_pdf():
+    if not global_state['pdf_path'] or not os.path.exists(global_state['pdf_path']):
+        raise HTTPException(status_code=404, detail="No PDF available")
+
+    return FileResponse(
+        path=global_state['pdf_path'],
+        media_type="application/pdf",
+        filename=global_state['pdf_filename']
+    )

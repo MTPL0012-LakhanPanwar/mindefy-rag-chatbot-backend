@@ -9,15 +9,22 @@ from db.mongo import get_database
 from schemas.chat import (
     ChatCreateRequest,
     ChatUpdateRequest,
-    ChatResponse,
+    ChatResponse as ChatHistoryResponse,
     ChatHistoryListItem,
     ChatHistoryDetail,
     DeleteResponse,
     MessageResponse
 )
 
+# rag imports
+from core.config import settings
+from rag_services.llm import LLMService
+from models.rag_model import ChatRequest, ChatResponse as RagChatResponse
+from rag_services.state import global_state
+
 router = APIRouter()
 
+llm_service = LLMService(settings.CHAT_MODEL, settings.TEMPERATURE, settings.MAX_TOKENS)
 
 def generate_title_from_message(message: str, max_length: int = 50) -> str:
     """Generate a chat title from the first user message"""
@@ -25,8 +32,7 @@ def generate_title_from_message(message: str, max_length: int = 50) -> str:
         return message
     return message[:max_length].rsplit(' ', 1)[0] + "..."
 
-
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", response_model=ChatHistoryResponse)
 async def create_or_continue_chat(
     payload: ChatCreateRequest,
     current_user: dict = Depends(require_approved_user),
@@ -144,7 +150,7 @@ async def create_or_continue_chat(
             }
         )
         
-        return ChatResponse(
+        return ChatHistoryResponse(
             chat_id=chat_id,
             response=response_text,
             title=chat.get("title", "New Chat")
@@ -461,3 +467,59 @@ async def delete_chat(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+# Rag chat bot API integration
+@router.post("/rag-chat", response_model=RagChatResponse)
+async def chat(request: ChatRequest):
+    """Chat with the uploaded document."""
+    
+    if global_state['retriever'] is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No document uploaded. Please upload a PDF first."
+        )
+    
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    
+    try:
+        # Search for relevant chunks
+        results = global_state['retriever'].search(request.message, settings.TOP_K_RESULTS)
+        
+        # Combine context
+        context = "\n\n".join([chunk for chunk, _ in results])
+        
+        # Generate answer
+        answer = llm_service.generate_answer(
+            request.message,
+            context,
+            global_state['history']
+        )
+        
+        # Update history (limit to max pairs)
+        global_state['history'].append({
+            'user': request.message,
+            'assistant': answer
+        })
+        
+        # Keep only last MAX_HISTORY_PAIRS
+        if len(global_state['history']) > settings.MAX_HISTORY_PAIRS:
+            global_state['history'] = global_state['history'][-settings.MAX_HISTORY_PAIRS:]
+        
+        # Prepare sources
+        sources = [
+            chunk[:150] + "..." if len(chunk) > 150 else chunk
+            for chunk, _ in results
+        ]
+        
+        return RagChatResponse(
+            answer=answer,
+            sources=sources
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating response: {str(e)}"
+        )
