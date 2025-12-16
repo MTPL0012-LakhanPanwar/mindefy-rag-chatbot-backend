@@ -4,12 +4,9 @@ from datetime import datetime
 from bson import ObjectId
 
 from dependencies.auth import require_approved_user
-from breathe_Ai import breathe_chain
 from db.mongo import get_database
 from schemas.chat import (
-    ChatCreateRequest,
     ChatUpdateRequest,
-    ChatResponse as ChatHistoryResponse,
     ChatHistoryListItem,
     ChatHistoryDetail,
     DeleteResponse,
@@ -31,136 +28,6 @@ def generate_title_from_message(message: str, max_length: int = 50) -> str:
     if len(message) <= max_length:
         return message
     return message[:max_length].rsplit(' ', 1)[0] + "..."
-
-@router.post("/chat", response_model=ChatHistoryResponse)
-async def create_or_continue_chat(
-    payload: ChatCreateRequest,
-    current_user: dict = Depends(require_approved_user),
-    chat_id: Optional[str] = Query(None, description="Chat ID to continue existing conversation")
-):
-    """
-    Create new chat or continue existing chat.
-    
-    - If chat_id is provided: Add message to existing chat
-    - If chat_id is None: Create new chat
-    
-    Request body:
-    ```json
-    {
-        "user_input": "Your message here"
-    }
-    ```
-    
-    Response:
-    ```json
-    {
-        "chat_id": "507f1f77bcf86cd799439011",
-        "response": "AI response here",
-        "title": "Chat title"
-    }
-    ```
-    """
-    user_input = payload.user_input
-    
-    if not user_input or not isinstance(user_input, str):
-        raise HTTPException(
-            status_code=400,
-            detail="'user_input' is required and must be a string"
-        )
-    
-    db = get_database()
-    chat_collection = db["chat_histories"]
-    user_id = str(current_user["_id"])
-    
-    try:
-        # Get or create chat
-        if chat_id:
-            # Validate ObjectId format
-            if not ObjectId.is_valid(chat_id):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid chat_id format"
-                )
-            
-            # Validate chat exists and belongs to user
-            chat = await chat_collection.find_one({
-                "_id": ObjectId(chat_id),
-                "user_id": user_id,
-                "is_deleted": False
-            })
-            
-            if not chat:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Chat not found or you don't have access"
-                )
-            
-            # Load conversation history into memory
-            chain = breathe_chain()
-            for msg in chat.get("messages", []):
-                if msg["role"] == "user":
-                    chain.memory.chat_memory.add_user_message(msg["content"])
-                else:
-                    chain.memory.chat_memory.add_ai_message(msg["content"])
-        else:
-            # Create new chat
-            chain = breathe_chain()
-            title = generate_title_from_message(user_input)
-            
-            new_chat = {
-                "user_id": user_id,
-                "title": title,
-                "messages": [],
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-                "is_deleted": False
-            }
-            
-            result = await chat_collection.insert_one(new_chat)
-            chat_id = str(result.inserted_id)
-            chat = new_chat
-            chat["_id"] = result.inserted_id
-        
-        # Get AI response
-        result = chain.invoke({"input": user_input})
-        response_text = result.get("response", str(result))
-        
-        # Save messages to database
-        user_message = {
-            "role": "user",
-            "content": user_input,
-            "timestamp": datetime.utcnow()
-        }
-        
-        assistant_message = {
-            "role": "assistant",
-            "content": response_text,
-            "timestamp": datetime.utcnow()
-        }
-        
-        await chat_collection.update_one(
-            {"_id": ObjectId(chat_id)},
-            {
-                "$push": {
-                    "messages": {
-                        "$each": [user_message, assistant_message]
-                    }
-                },
-                "$set": {"updated_at": datetime.utcnow()}
-            }
-        )
-        
-        return ChatHistoryResponse(
-            chat_id=chat_id,
-            response=response_text,
-            title=chat.get("title", "New Chat")
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.get("/chats", response_model=List[ChatHistoryListItem])
 async def get_chat_history_list(

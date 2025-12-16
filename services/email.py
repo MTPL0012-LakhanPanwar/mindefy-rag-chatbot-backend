@@ -98,10 +98,10 @@ class EmailService:
             return False
             
         if approved:
-            subject = "Welcome to Breathe AI - Your Account Has Been Approved!"
+            subject = "Welcome to Mindefy AI - Your Account Has Been Approved!"
             template_name = "user_approved"
         else:
-            subject = "Breathe AI - Account Registration Update"
+            subject = "Mindefy AI - Account Registration Update"
             template_name = "user_rejected"
             
         template_vars = {
@@ -123,7 +123,7 @@ class EmailService:
         if not user_email:
             return False
             
-        subject = "Welcome to Breathe AI - Start Your Journey!"
+        subject = "Welcome to Mindefy AI - Start Your Journey!"
         template_vars = {
             "username": user_data.get("username"),
             "email": user_data.get("email"),

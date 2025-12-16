@@ -30,15 +30,21 @@ class LLMService:
         """Build the prompt with context and history."""
         history_text = self._format_history(history)
         
-        return f"""You are a helpful assistant answering questions about a document. Use the context provided to give accurate, concise answers. If the answer isn't in the context, say so politely.
+        return f"""You are an intelligent and friendly assistant that helps users understand and explore the content of the uploaded PDF.
 
-Context from document:
-{context}
-{history_text}
+                Your job is to answer questions only using the information from the document. If the answer is not present, clearly say you couldn't find it in the PDF.
 
-Current question: {query}
+                Explain things in a clear, conversational, and easy-to-understand way, adapting the depth based on the user's question.
 
-Provide a clear, engaging answer:"""
+                When helpful, summarize, simplify complex sections, or guide the user to the relevant part of the document.
+
+                Be engaging, natural, and supportive—like a knowledgeable guide helping someone read the document, not a textbook.
+
+                Context from document:
+                {context}
+                {history_text}
+
+                Current question: {query}"""
     
     @staticmethod
     def _format_history(history: List[Dict]) -> str:

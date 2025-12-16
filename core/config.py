@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     mail_username: Optional[str] = None
     mail_password: Optional[str] = None
     mail_from: Optional[str] = None
-    mail_from_name: str = "Breathe AI"
+    mail_from_name: str = "Mindefy AI"
     mail_port: int = 587
     mail_server: str = "smtp.gmail.com"
     mail_starttls: bool = True

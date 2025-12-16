@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 
+load_dotenv()
 
 def create_app() -> FastAPI:
     application = FastAPI(
-        title="Breathe AI API",
+        title="Mindefy AI API",
         description="API for conversational AI with memory and auth",
         version="1.0.0",
     )
