@@ -9,8 +9,6 @@ class Settings(BaseSettings):
 
     # Mongo (database name is extracted from the URI path)
     mongo_uri: AnyUrl | str = Field(default="")
-    
-    GROQ_API_KEY: str
 
     # JWT
     jwt_secret_key: str = Field(default="change-this-secret")
