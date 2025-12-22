@@ -198,18 +198,23 @@ async def upload_pdf(file: UploadFile = File(...)):
         )
 
         previous_chunks = len(global_state['chunks']) if global_state['chunks'] else 0
-        if global_state['retriever']:
-            clear_global_state()
-
-        retriever = HybridRetriever(chunks, embedding_service)
         
         # Delete old PDFs only after successful processing
         for existing_pdf in existing_pdfs:
-            if existing_pdf != temp_path:
+            if existing_pdf.resolve() != temp_path.resolve():
                 try:
-                    os.remove(existing_pdf)
+                    if existing_pdf.exists():
+                        os.remove(existing_pdf)
                 except Exception as e:
                     print(f"Error deleting existing PDF {existing_pdf}: {e}")
+        
+        if global_state['retriever']:
+            global_state['retriever'] = None
+            global_state['chunks'] = None
+            global_state['history'] = []
+            gc.collect()
+
+        retriever = HybridRetriever(chunks, embedding_service)
         
         # Rename temp file to final name if needed
         if temp_path != pdf_path:
