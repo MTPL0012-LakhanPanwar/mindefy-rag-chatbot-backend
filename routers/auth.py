@@ -15,7 +15,7 @@ from schemas.auth import (
 )
 from schemas.user import UserOut
 from services import users as user_service
-from services.email import email_service
+# from services.email import email_service
 
 
 router = APIRouter()
@@ -44,10 +44,10 @@ async def signup(payload: SignupRequest):
     })
     
     # Send notification to admin about new user signup
-    try:
-        await email_service.send_user_signup_notification(doc)
-    except Exception as e:
-        print(f"Failed to send signup notification: {e}")
+    # try:
+    #     await email_service.send_user_signup_notification(doc)
+    # except Exception as e:
+    #     print(f"Failed to send signup notification: {e}")
     
     return {
         "id": str(doc["_id"]),

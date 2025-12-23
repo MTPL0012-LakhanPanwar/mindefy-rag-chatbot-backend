@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from dependencies.auth import require_admin
 from schemas.user import UserOut, AdminUpdateRequestStatus
 from services import users as user_service
-from services.email import email_service
+# from services.email import email_service
 
 # ===== RAG Imports =====
 from rag_services.pdf_processor import PDFProcessor
@@ -127,17 +127,17 @@ async def update_approval(user_id: str, payload: AdminUpdateRequestStatus, _: di
     doc = await user_service.get_user_by_id(user_id)
     
     # Send notification to user about approval/rejection
-    try:
-        if payload.isApproved.strip().lower() == "approved":
-            # Send approval notification
-            await email_service.send_approval_notification(doc, True)
-            # Send welcome email
-            await email_service.send_welcome_email(doc)
-        else:
-            # Send rejection notification
-            await email_service.send_approval_notification(doc, False)
-    except Exception as e:
-        print(f"Failed to send approval notification: {e}")
+    # try:
+    #     if payload.isApproved.strip().lower() == "approved":
+    #         # Send approval notification
+    #         await email_service.send_approval_notification(doc, True)
+    #         # Send welcome email
+    #         await email_service.send_welcome_email(doc)
+    #     else:
+    #         # Send rejection notification
+    #         await email_service.send_approval_notification(doc, False)
+    # except Exception as e:
+    #     print(f"Failed to send approval notification: {e}")
     
     return {
         "id": str(doc["_id"]),
