@@ -1,8 +1,10 @@
 from datetime import date
 from typing import Any, Dict
+import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import RedirectResponse
 from jose import jwt, JWTError
 import httpx
 
@@ -19,6 +21,9 @@ from services import users as user_service
 
 
 router = APIRouter()
+
+# Store state tokens temporarily (in production, use Redis or similar)
+state_store = {}
 
 
 @router.post("/signup", response_model=UserOut, status_code=201)
@@ -201,79 +206,149 @@ async def delete_account(current_user = Depends(get_current_user)):
         "success": True
     }
 
-@router.post("/social-login", response_model=TokenPair)
-async def social_login(payload: SocialLoginRequest):
-    user = None
-    provider = payload.provider.lower()
+@router.get("/google")
+async def google_login(request: Request):
+    """
+    Initiate Google OAuth2 flow.
+    Redirects user to Google's consent screen.
+    """
+    if not settings.google_client_id or not settings.google_client_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="Google OAuth credentials not configured"
+        )
+    
+    # Generate state token for CSRF protection
+    state = secrets.token_urlsafe(32)
+    state_store[state] = True
+    
+    # Build Google OAuth2 authorization URL
+    google_auth_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth?"
+        f"client_id={settings.google_client_id}&"
+        f"redirect_uri={settings.google_redirect_uri}&"
+        "response_type=code&"
+        "scope=openid%20email%20profile&"
+        f"state={state}"
+    )
+    
+    return RedirectResponse(url=google_auth_url)
 
-    if provider == "google":
-        if not payload.id_token:
-            raise HTTPException(status_code=400, detail="id_token required for Google")
 
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                "https://oauth2.googleapis.com/tokeninfo",
-                params={"id_token": payload.id_token}
+@router.get("/google/callback")
+async def google_callback(request: Request, code: str = None, state: str = None, error: str = None):
+    """
+    Handle Google OAuth2 callback.
+    Exchanges authorization code for tokens, creates/logs in user,
+    and redirects to frontend with access and refresh tokens.
+    """
+    # Check for errors from Google
+    if error:
+        print(f"Google OAuth error from provider: {error}")
+        error_url = f"{settings.frontend_url}/login?error={error}"
+        return RedirectResponse(url=error_url)
+    
+    # Validate state token (CSRF protection)
+    if not state or state not in state_store:
+        print(f"Invalid state token. State: {state}, Store has: {list(state_store.keys())}")
+        error_url = f"{settings.frontend_url}/login?error=invalid_state"
+        return RedirectResponse(url=error_url)
+    
+    # Remove used state token
+    state_store.pop(state, None)
+    
+    # Validate authorization code
+    if not code:
+        print("No authorization code received from Google")
+        error_url = f"{settings.frontend_url}/login?error=no_code"
+        return RedirectResponse(url=error_url)
+    
+    try:
+        # Exchange authorization code for access token
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code": code,
+                    "client_id": settings.google_client_id,
+                    "client_secret": settings.google_client_secret,
+                    "redirect_uri": settings.google_redirect_uri,
+                    "grant_type": "authorization_code"
+                }
             )
-
-        if resp.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid Google token")
-
-        data = resp.json()
-        if settings.google_client_id and data.get("aud") != settings.google_client_id:
-            raise HTTPException(status_code=401, detail="Invalid Google client")
-
+        
+        if token_response.status_code != 200:
+            error_detail = token_response.text
+            print(f"Token exchange failed. Status: {token_response.status_code}, Response: {error_detail}")
+            error_url = f"{settings.frontend_url}/login?error=token_exchange_failed"
+            return RedirectResponse(url=error_url)
+        
+        token_data = token_response.json()
+        google_access_token = token_data.get("access_token")
+        
+        if not google_access_token:
+            print(f"No access token in response: {token_data}")
+            error_url = f"{settings.frontend_url}/login?error=no_access_token"
+            return RedirectResponse(url=error_url)
+        
+        # Get user info from Google
+        async with httpx.AsyncClient() as client:
+            user_info_response = await client.get(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                headers={"Authorization": f"Bearer {google_access_token}"}
+            )
+        
+        if user_info_response.status_code != 200:
+            print(f"Failed to get user info. Status: {user_info_response.status_code}, Response: {user_info_response.text}")
+            error_url = f"{settings.frontend_url}/login?error=failed_to_get_user_info"
+            return RedirectResponse(url=error_url)
+        
+        user_info = user_info_response.json()
+        
+        # Extract user profile
+        google_id = user_info.get("id")
+        email = user_info.get("email")
+        name = user_info.get("name")
+        username = name if name else (email.split("@")[0] if email else f"user_{google_id}")
+        
         profile = {
-            "email": data.get("email"),
-            "username": data.get("email", "user").split("@")[0]
+            "email": email,
+            "username": username
         }
-
-        user = await user_service.upsert_social_user("google", data.get("sub"), profile)
-
-    elif provider == "facebook":
-        if not payload.access_token:
-            raise HTTPException(status_code=400, detail="access_token required for Facebook")
-
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                "https://graph.facebook.com/me",
-                params={"fields": "id,name,email", "access_token": payload.access_token},
-            )
-
-        if resp.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid Facebook token")
-
-        data = resp.json()
-        email = data.get("email") or f"fb_{data.get('id')}@facebook.local"
-        profile = {"email": email, "username": email.split("@")[0]}
-        user = await user_service.upsert_social_user("facebook", data.get("id"), profile)
-
-    else:
-        raise HTTPException(status_code=400, detail="Unsupported provider")
-
-    # Safety check
-    if not user:
-        raise HTTPException(status_code=500, detail="User could not be created or fetched")
-
-    if not user.get("isActive", True):
-        raise HTTPException(status_code=403, detail="User is deactivated")
-
-    access = create_access_token(str(user["_id"]), {"role": user.get("userType", "admin")})
-    refresh = create_refresh_token(str(user["_id"]))
-
-    # return tokens + full user info
-    return {
-        "access_token": access,
-        "refresh_token": refresh,
-        "token_type": "bearer",
-        "user": {
-            "id": str(user["_id"]),
-            "username": user.get("username"),
-            "email": user.get("email"),
-            "gender": user.get("gender"),
-            "dob": user.get("dob"),
-            "userType": user.get("userType", "admin"),
-            "isActive": user.get("isActive", True),
-            "isApproved": user.get("isApproved", "pending"),
-        }
-    }
+        
+        # Create or get existing user
+        user = await user_service.upsert_social_user("google", google_id, profile)
+        
+        if not user:
+            print(f"Failed to create/get user for Google ID: {google_id}, email: {email}")
+            error_url = f"{settings.frontend_url}/login?error=user_creation_failed"
+            return RedirectResponse(url=error_url)
+        
+        # Check if user is active
+        if not user.get("isActive", True):
+            print(f"User {user.get('email')} is deactivated")
+            error_url = f"{settings.frontend_url}/login?error=user_deactivated"
+            return RedirectResponse(url=error_url)
+        
+        # Generate JWT tokens
+        access_token = create_access_token(
+            str(user["_id"]),
+            {"role": user.get("userType", "admin")}
+        )
+        refresh_token = create_refresh_token(str(user["_id"]))
+        
+        # Redirect to frontend with tokens as query parameters
+        redirect_url = (
+            f"{settings.frontend_url}{settings.frontend_chat_route}?"
+            f"access_token={access_token}&"
+            f"refresh_token={refresh_token}"
+        )
+        
+        return RedirectResponse(url=redirect_url)
+    
+    except Exception as e:
+        import traceback
+        print(f"Google OAuth error: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
+        error_url = f"{settings.frontend_url}/login?error=authentication_failed&message={str(e)}"
+        return RedirectResponse(url=error_url)
