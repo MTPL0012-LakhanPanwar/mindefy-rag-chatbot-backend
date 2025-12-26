@@ -72,9 +72,9 @@ async def signup(payload: SignupRequest):
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = await user_service.find_by_email_or_username(form_data.username)
     if not user or not user.get("hashed_password"):
-        raise HTTPException(status_code=400, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     if not verify_password(form_data.password, user["hashed_password"]):
-        raise HTTPException(status_code=400, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.get("isActive", True):
         raise HTTPException(status_code=403, detail="User is deactivated")
 
