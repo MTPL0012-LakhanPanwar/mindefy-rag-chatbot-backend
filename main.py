@@ -1,13 +1,14 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+
 
 load_dotenv()
 
 def create_app() -> FastAPI:
     application = FastAPI(
         title="Mindefy AI API",
-        description="API for conversational AI with memory and auth",
+        description="API for conversational AI with memory ,authentication, and movie recommendations",
         version="1.0.0",
     )
 
@@ -35,11 +36,13 @@ def create_app() -> FastAPI:
     from routers.admin import router as admin_router
     from routers.chat import router as chat_router
     from routers.users import router as users_router
+    from routers.movie import router as movie_router
 
     application.include_router(auth_router, prefix="/auth", tags=["auth"])
     application.include_router(admin_router, prefix="/admin", tags=["admin"])
     application.include_router(chat_router, tags=["chat"])
     application.include_router(users_router, prefix="/users", tags=["users"])
+    application.include_router(movie_router, prefix="/api/movies", tags=["movies"])
 
     return application
 
