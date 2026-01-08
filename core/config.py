@@ -4,8 +4,10 @@ from typing import List, Optional
 
 
 class Settings(BaseSettings):
-    app_name: str = "RAG Chatbot API"
+    app_name: str = "Mindefy AI Backend"
     environment: str = Field(default="development")
+    Version: str = "1.0.0"
+    
 
     # Mongo (database name is extracted from the URI path)
     mongo_uri: AnyUrl | str = Field(default="")
@@ -53,6 +55,27 @@ class Settings(BaseSettings):
     CHAT_MODEL: str = "gpt-4o-mini"
     TEMPERATURE: float = 0.3
     MAX_TOKENS: int = 500
+
+    # TMDB Configuration
+    # IMPORTANT: Set TMDB_API_KEY in .env file or as environment variable
+    # Pydantic Settings will automatically read from .env file or environment variables
+    # DO NOT commit your actual API key to version control
+    # If not set, defaults to empty string (API calls will fail - set it in .env file)
+    TMDB_API_KEY: str = ""
+    POSTER_BASE_URL: str = "https://image.tmdb.org/t/p/w500"
+   
+    
+    # CORS Configuration
+    BACKEND_CORS_ORIGINS: list = ["*"]
+    
+    # Cache Configuration
+    CACHE_TTL: int = 3600  # 1 hour in seconds
+    
+    # Pagination
+    DEFAULT_PAGE_SIZE: int = 10
+    MAX_PAGE_SIZE: int = 100
+    
+
 
     model_config = {
         "env_file": ".env",
