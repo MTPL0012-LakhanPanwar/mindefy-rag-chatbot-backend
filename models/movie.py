@@ -5,6 +5,7 @@ class MovieResponse(BaseModel):
     title: str
     movie_id: int
     poster_url: Optional[str] = None
+    release_year: Optional[int] = None
 
 class MovieDetailResponse(BaseModel):
     title: str

@@ -58,7 +58,8 @@ class MovieService:
             results.append({
                 "title": row["title"],
                 "movie_id": movie_id,
-                "poster_url": self._get_poster_url(movie_id)
+                "poster_url": self._get_poster_url(movie_id),
+                "release_year": self.tmdb_service.get_release_year(movie_id)
             })
 
         return {"results": results, "total": total}
