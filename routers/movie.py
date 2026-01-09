@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import List
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from services.movie_service import MovieService
 from services.recommendation_service import RecommendationService
@@ -126,10 +127,16 @@ async def get_personalized_recommendations(request: RecommendationRequest):
         if request.top_n < 1 or request.top_n > 100:
             raise HTTPException(status_code=400, detail="top_n must be between 1 and 100")
         
-        recommendations = recommendation_service.get_personalized_recommendations(
-            request.liked_movies, 
+        #recommendations = recommendation_service.get_personalized_recommendations(
+        #    request.liked_movies, 
+        #    request.top_n
+        #)
+        recommendations = await run_in_threadpool(
+            recommendation_service.get_personalized_recommendations,
+            request.liked_movies,
             request.top_n
         )
+        
         return PersonalizedRecommendationsResponse(
             liked_movies=request.liked_movies,
             recommendations=recommendations,
