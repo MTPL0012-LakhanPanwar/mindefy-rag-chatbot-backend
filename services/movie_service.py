@@ -55,11 +55,12 @@ class MovieService:
         results: List[Dict] = []
         for _, row in page.iterrows():
             movie_id = int(row["movie_id"])
+            brief = self.tmdb_service.get_movie_brief(movie_id)
             results.append({
                 "title": row["title"],
                 "movie_id": movie_id,
-                "poster_url": self._get_poster_url(movie_id),
-                "release_year": self.tmdb_service.get_release_year(movie_id)
+                "poster_url": (brief or {}).get("poster_url"),
+                "release_year": (brief or {}).get("release_year")
             })
 
         return {"results": results, "total": total}
