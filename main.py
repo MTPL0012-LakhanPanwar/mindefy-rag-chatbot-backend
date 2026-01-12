@@ -32,6 +32,7 @@ def create_app() -> FastAPI:
         await close_mongo_connection()
 
     # Routers are imported lazily to avoid circular deps during app creation
+    #pywin32==311
     from routers.auth import router as auth_router
     from routers.admin import router as admin_router
     from routers.chat import router as chat_router
@@ -52,4 +53,4 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=8000)
