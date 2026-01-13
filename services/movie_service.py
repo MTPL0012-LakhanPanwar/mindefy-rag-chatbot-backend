@@ -48,6 +48,8 @@ class MovieService:
 
         matched["_score"] = score[any_match.to_numpy()]
         matched.sort_values(["_score", "title"], ascending=[False, True], inplace=True)
+        
+        matched = matched.drop_duplicates(subset=["movie_id"], keep="first")
 
         total = int(len(matched))
         page = matched.iloc[skip:skip + limit]
