@@ -38,9 +38,6 @@ def create_app() -> FastAPI:
     from routers.chat import router as chat_router
     from routers.users import router as users_router
     from routers.movie import router as movie_router
-    from routers.mindfulness import router as mindfulness_router
-
-    application.include_router(mindfulness_router)
 
 
     application.include_router(auth_router, prefix="/auth", tags=["auth"])
