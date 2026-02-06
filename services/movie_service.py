@@ -57,13 +57,26 @@ class MovieService:
         results: List[Dict] = []
         for _, row in page.iterrows():
             movie_id = int(row["movie_id"])
-            brief = self.tmdb_service.get_movie_brief(movie_id)
-            results.append({
-                "title": row["title"],
-                "movie_id": movie_id,
-                "poster_url": (brief or {}).get("poster_url"),
-                "release_year": (brief or {}).get("release_year")
-            })
+            details = self.tmdb_service.get_movie_details(movie_id)
+            if details:
+                genres = details.get("genres", [])[:4]
+                results.append({
+                    "title": row["title"],
+                    "movie_id": movie_id,
+                    "poster_url": details.get("poster_url"),
+                    "release_year": details.get("release_year"),
+                    "rating": details.get("rating"),
+                    "genres": genres
+                })
+            else:
+                results.append({
+                    "title": row["title"],
+                    "movie_id": movie_id,
+                    "poster_url": None,
+                    "release_year": None,
+                    "rating": None,
+                    "genres": []
+                })
 
         return {"results": results, "total": total}
 
@@ -112,12 +125,26 @@ class MovieService:
         results = []
         for _, row in movies_slice.iterrows():
             movie_id = int(row["movie_id"])
-            results.append({
-                "title": row["title"],
-                "movie_id": movie_id,
-                "poster_url": self._get_poster_url(movie_id),
-                "release_year": self.tmdb_service.get_release_year(movie_id)
-            })
+            details = self.tmdb_service.get_movie_details(movie_id)
+            if details:
+                genres = details.get("genres", [])[:4]
+                results.append({
+                    "title": row["title"],
+                    "movie_id": movie_id,
+                    "poster_url": details.get("poster_url"),
+                    "release_year": details.get("release_year"),
+                    "rating": details.get("rating"),
+                    "genres": genres
+                })
+            else:
+                results.append({
+                    "title": row["title"],
+                    "movie_id": movie_id,
+                    "poster_url": None,
+                    "release_year": None,
+                    "rating": None,
+                    "genres": []
+                })
         
         return results
     

@@ -6,6 +6,8 @@ class MovieResponse(BaseModel):
     movie_id: int
     poster_url: Optional[str] = None
     release_year: Optional[int] = None
+    rating: Optional[float] = None
+    genres: List[str] = []
 
 class MovieDetailResponse(BaseModel):
     title: str
