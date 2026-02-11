@@ -32,12 +32,12 @@ def create_app() -> FastAPI:
         await close_mongo_connection()
 
     # Routers are imported lazily to avoid circular deps during app creation
-    #pywin32==311
     from routers.auth import router as auth_router
     from routers.admin import router as admin_router
     from routers.chat import router as chat_router
     from routers.users import router as users_router
     from routers.movie import router as movie_router
+    from routers.mindfulnest import router as mindfulnest_router
 
 
     application.include_router(auth_router, prefix="/auth", tags=["auth"])
@@ -45,6 +45,7 @@ def create_app() -> FastAPI:
     application.include_router(chat_router, tags=["chat"])
     application.include_router(users_router, prefix="/users", tags=["users"])
     application.include_router(movie_router, prefix="/api/movies", tags=["movies"])
+    application.include_router(mindfulnest_router)
 
     return application
 
